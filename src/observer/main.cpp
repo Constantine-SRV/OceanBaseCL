@@ -89,7 +89,7 @@ static void print_version()
 #else
   const char *extra_flags = "|Sanity";
 #endif
-  MPRINT("observer (%s)\n", PACKAGE_STRING);
+  MPRINT("observer (OceanBase_CE_CL %s)\n", PACKAGE_VERSION);
   MPRINT("REVISION: %s", build_version());
   MPRINT("BUILD_BRANCH: %s", build_branch());
   MPRINT("BUILD_TIME: %s %s", build_date(), build_time());
