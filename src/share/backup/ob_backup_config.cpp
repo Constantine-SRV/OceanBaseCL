@@ -835,7 +835,7 @@ int ObLogArchiveDestConfigParser::do_parse_log_archive_dest_(const common::ObStr
 int ObLogArchiveDestConfigParser::do_parse_piece_switch_interval_(const common::ObString &name, const common::ObString &value)
 {
   int ret = OB_SUCCESS;
-  const int64_t MIN_LOG_ARCHIVE_PIECE_SWITCH_INTERVAL = 24 * 3600 * 1000LL * 1000LL; //1d
+  const int64_t MIN_LOG_ARCHIVE_PIECE_SWITCH_INTERVAL = 1 * 3600 * 1000LL * 1000LL; //1h
   const int64_t MAX_LOG_ARCHIVE_PIECE_SWITCH_INTERVAL = 7 * 24 * 3600 * 1000LL * 1000LL; //7d
   if (name.empty() || value.empty()) {
     ret = OB_INVALID_ARGUMENT;
