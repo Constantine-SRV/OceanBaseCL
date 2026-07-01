@@ -1,132 +1,138 @@
-<p align="center">
-    <a href="https://github.com/oceanbase/oceanbase">
-        <img alt="OceanBase Logo" src="images/logo.svg" width="50%" />
-    </a>
-</p>
+# OceanBaseCL
 
-<p align="center">
-    <a href="https://en.oceanbase.com/docs/oceanbase-database">
-        <img alt="English doc" src="https://img.shields.io/badge/docs-English-blue" />
-    </a>
-    <a href="https://www.oceanbase.com/docs/oceanbase-database-cn">
-        <img alt="Chinese doc" src="https://img.shields.io/badge/文档-简体中文-blue" />
-    </a>
-    <a href="https://github.com/oceanbase/oceanbase/commits/master">
-        <img alt="last commit" src="https://img.shields.io/github/last-commit/oceanbase/oceanbase/master" />
-    </a>
-    <a href="https://github.com/oceanbase/oceanbase">
-        <img alt="stars" src="https://img.shields.io/badge/dynamic/json?color=blue&label=stars&query=stargazers_count&url=https%3A%2F%2Fapi.github.com%2Frepos%2Foceanbase%2Foceanbase" />
-    </a>
-    <a href="https://github.com/oceanbase/oceanbase/actions/workflows/compile.yml">
-        <img alt="building status" src="https://img.shields.io/github/actions/workflow/status/oceanbase/oceanbase/compile.yml?branch=master" />
-    </a>
-    <a href="https://github.com/oceanbase/oceanbase/blob/master/LICENSE">
-        <img alt="license" src="https://img.shields.io/badge/license-MulanPubL--2.0-blue" />
-    </a>
-</p>
+A customized build of **OceanBase CE 4.4.2** (`v4.4.2_CE`).
 
-<p align="center">
-    <a href="https://discord.gg/74cF8vbNEs">
-        <img alt="Support" src="https://img.shields.io/badge/Disord-Join%20Oceanbase-brightgreen?logo=discord" />
-    </a>
-    <a href="https://stackoverflow.com/questions/tagged/oceanbase">
-        <img alt="Stack Overflow" src="https://img.shields.io/badge/Stack-Stack%20Overflow-brightgreen?logo=stackoverflow" />
-    </a>
-</p>
+This repository is a **proof-of-concept**: it demonstrates the full lifecycle of
+modifying a hardcoded behavior in OceanBase's C++ source, compiling the project
+from scratch, and producing a working `observer` binary — then verifying the
+change on a running cluster.
 
-English | [中文版](README_CN.md)
+The experiment completed successfully. See [Result](#result) below.
 
-**OceanBase Database** is a distributed relational database. It is developed entirely by Ant Group. The OceanBase Database is built on a common server cluster. Based on the [Paxos](https://lamport.azurewebsites.net/pubs/lamport-paxos.pdf) protocol and its distributed structure, the OceanBase Database provides high availability and linear scalability. The OceanBase Database is not dependent on specific hardware architectures.
+---
 
-# Key features
+## What was changed
 
-- **Transparent Scalability**: 1,500 nodes, PB data and a trillion rows of records in one cluster.
-- **Ultra-fast Performance**: TPC-C 707 million tmpC and TPC-H 15.26 million QphH @30000GB.
-- **Cost Efficiency**: saves 70%–90% of storage costs.
-- **Real-time Analytics**: supports HTAP without additional cost. 
-- **Continuous Availability**: RPO = 0(zero data loss) and RTO < 8s(recovery time)
-- **MySQL Compatible**: easily migrated from MySQL database.
+The goal was to lower the minimum allowed value of `PIECE_SWITCH_INTERVAL`
+(the log-archiving piece switch interval, used when archiving redo logs to S3).
+In stock OceanBase CE this minimum is **hardcoded to 1 day**, which rejects any
+attempt to set a shorter interval:
 
-See also [key features](https://en.oceanbase.com/product/opensource) for more details.
-
-# Quick start
-
-See also [Quick experience](https://en.oceanbase.com/docs/community-observer-en-10000000000829647) or [Quick Start (Simplified Chinese)](https://open.oceanbase.com/quickStart) for more details.
-
-## 🔥 Start with all-in-one
-
-You can quickly deploy a stand-alone OceanBase Database to experience with the following commands:
-
-**Note**: Linux Only
-
-```shell
-# download and install all-in-one package (internet connection is required)
-bash -c "$(curl -s https://obbusiness-private.oss-cn-shanghai.aliyuncs.com/download-center/opensource/oceanbase-all-in-one/installer.sh)"
-source ~/.oceanbase-all-in-one/bin/env.sh
-
-# quickly deploy OceanBase database
-obd demo
+```
+ALTER SYSTEM SET LOG_ARCHIVE_DEST='LOCATION=s3://... PIECE_SWITCH_INTERVAL=1h' TENANT='bench';
+-- stock build: ERROR — invalid piece_switch_interval out of range [1d,7d]
 ```
 
-## 🐳 Start with docker
+Three source files were modified:
 
-**Note**: We provide images on [dockerhub](https://hub.docker.com/r/oceanbase/oceanbase-ce/tags), [quay.io](https://quay.io/repository/oceanbase/oceanbase-ce?tab=tags) and [ghcr.io](https://github.com/oceanbase/docker-images/pkgs/container/oceanbase-ce). If you have problems pulling images from dockerhub, please try the other two registries.
+| File | Change |
+|------|--------|
+| `src/share/backup/ob_backup_config.cpp` | Lowered the hardcoded minimum from `1d` to `1h` (`MIN_LOG_ARCHIVE_PIECE_SWITCH_INTERVAL`), and updated the range error message accordingly. **This is the functional change.** |
+| `src/observer/main.cpp` | Version banner tag (`observer -V`) changed to `OceanBase_CE_CL`. |
+| `src/share/system_variable/ob_system_variable.cpp` | SQL-visible version strings (`version()` and `version_comment`) tagged `OceanBase_CE_CL`. |
 
-1. Start an OceanBase Database instance:
+> Note: OceanBase validates `PIECE_SWITCH_INTERVAL` in two layers. The low-level
+> validity check in `ob_backup_struct` already permits values down to 1 minute,
+> so the effective 1-day gate lives entirely in `ob_backup_config.cpp`. Only that
+> one constant needed to change to allow `1h`.
 
-    ```shell
-    # Deploy a mini standalone instance.
-    docker run -p 2881:2881 --name oceanbase-ce -e MODE=mini -d oceanbase/oceanbase-ce
+The `_CL` version tag is purely cosmetic — it exists so a running instance can be
+identified as this custom build via `observer -V` or `SELECT version();`.
 
-    # Deploy a mini standalone instance using image from quay.io.
-    # docker run -p 2881:2881 --name oceanbase-ce -e MODE=mini -d quay.io/oceanbase/oceanbase-ce
+---
 
-    # Deploy a mini standalone instance using image from ghcr.io.
-    # docker run -p 2881:2881 --name oceanbase-ce -e MODE=mini -d ghcr.io/oceanbase/oceanbase-ce
-    ```
+## Why the 1-day default exists
 
-2. Connect to the OceanBase Database instance:
+The stock minimum is not arbitrary. A shorter piece switch interval produces more
+frequent archive "pieces", which means more small objects on the archive target
+(S3) and higher archive-management overhead. Lowering it to `1h` is appropriate
+for testing and benchmarking workloads; use a shorter interval in production only
+deliberately.
 
-    ```shell
-    docker exec -it oceanbase-ce obclient -h127.0.0.1 -P2881 -uroot # Connect to the root user of the sys tenant.
-    ```
+---
 
-See also [Docker Readme](https://github.com/oceanbase/docker-images/blob/main/oceanbase-ce/README.md) for more details.
+## Build environment
 
-## ☸️ Start with Kubernetes
+- **OS:** AlmaLinux 9.6 (RHEL 9 family)
+- **glibc:** 2.34
+- **Compiler:** Clang 17 (bundled by OceanBase's `build.sh --init`)
+- **Source tag:** `v4.4.2_CE` (commit `e859d1b9c9`)
 
-You can deploy and manage OceanBase Database instance in kubernetes cluster with [ob-operator](https://github.com/oceanbase/ob-operator) quickly. Refer to the document [Quick Start for ob-operator](https://oceanbase.github.io/ob-operator) to see details.
+### Build steps
 
-## 👨‍💻 Start developing
-See [OceanBase Developer Document](https://oceanbase.github.io/oceanbase/build-and-run) to learn how to compile and deploy a manually compiled observer.
+```bash
+git clone https://github.com/Constantine-SRV/OceanBaseCL.git
+cd OceanBaseCL
+git checkout oceanbase-cl
 
-# Roadmap
+# system prerequisites
+sudo dnf install -y git wget rpm cpio make glibc-devel glibc-headers \
+                    binutils m4 libtool libaio python3
+sudo alternatives --install /usr/bin/python python /usr/bin/python3 1
 
-For future plans, see [Product Iteration Progress](https://github.com/oceanbase/oceanbase/issues/1839). See also [OceanBase Roadmap](https://github.com/orgs/oceanbase/projects/4) for more details.
+# fetch dependencies + configure (downloads a prebuilt toolchain)
+bash build.sh release --init
 
-# Case study
+# compile just the observer
+cd build_release
+make observer -j4
+```
 
-OceanBase has been serving more than 2000 customers and upgraded their database from different industries, including Financial Services, Telecom, Retail, Internet, and more.
+The resulting binary is at:
 
-See also [success stories](https://en.oceanbase.com/customer/home) and [Who is using OceanBase](https://github.com/oceanbase/oceanbase/issues/1301) for more details.
+```
+build_release/src/observer/observer
+```
 
-# System architecture
+---
 
-[Introduction to system architecture](https://en.oceanbase.com/docs/community-observer-en-10000000000829641)
+## Result
 
-# Contributing
+The custom binary built and ran successfully. `observer -V` on the running server:
 
-Contributions are highly appreciated. Read the [development guide](https://oceanbase.github.io/oceanbase) to get started.
+```
+observer (OceanBase_CE_CL 4.4.2.0)
+REVISION: 1-e859d1b9c9a6d11d856f4fed5b6385f1a6795820
+BUILD_BRANCH: HEAD
+BUILD_TIME: Jun 29 2026 10:30:45
+BUILD_FLAGS: RelWithDebInfo
+BUILD_INFO:
+Copyright (c) 2011-present OceanBase Inc.
+```
 
-# License
+The custom tag is also visible from SQL:
 
-OceanBase Database is licensed under the Mulan Public License, Version 2. See the [LICENSE](LICENSE) file for more info.
+```sql
+SELECT version();
+-- 5.7.25-OceanBase_CE_CL-v4.4.2.0
 
-# Community
+SHOW VARIABLES LIKE 'version_comment';
+-- OceanBase_CE_CL 4.4.2.0 (r1-e859d1b9c9a6d11d856f4fed5b6385f1a6795820) (Built Jun 29 2026 10:30:45)
+```
 
-Join the OceanBase community via:
+And the previously rejected command now succeeds — `PIECE_SWITCH_INTERVAL=1h`
+is accepted instead of failing with `out of range [1d,7d]`.
 
-* [Discord](https://discord.gg/74cF8vbNEs): Best for: asking questions, sharing feedback, getting the latest news, and connecting with other OceanBase users.
-* [GitHub Issues](https://github.com/oceanbase/oceanbase/issues): Best for: addressing bugs encountered while using OceanBase, as well as submitting feature proposals.
-* [Chinese User Forum](https://ask.oceanbase.com/): Only for Chinese users, best for: asking questions, sharing feedback, getting the latest news, and connecting with other OceanBase users.
-* WeChat Group (Add the assistant with WeChat ID: OBCE666): Only for Chinese users, best for: getting the latest news and connecting with other OceanBase users.
+---
+
+## Prebuilt binary
+
+A stripped, gzip-compressed `observer` binary is attached to the
+[Releases](../../releases) page.
+
+```bash
+gunzip observer-cl.gz
+```
+
+**Compatibility:** the prebuilt binary is dynamically linked against **glibc 2.34**.
+It runs on RHEL / AlmaLinux / Rocky 9+ and recent Ubuntu, but **not** on el7/el8
+(glibc < 2.34), where it fails with `GLIBC_2.34 not found`. For older systems,
+rebuild from source in a matching environment.
+
+---
+
+## License
+
+OceanBase CE is licensed under **Mulan PubL v2**. This fork retains the original
+`LICENSE` and all upstream copyright notices. It is a modification of OceanBase CE
+for evaluation purposes and is not affiliated with or endorsed by OceanBase.
