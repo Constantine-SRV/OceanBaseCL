@@ -447,7 +447,11 @@ int ObSchemaGetterGuard::check_user_access(
                                                                    pwd_match))) {
               LOG_WARN("Failed to verify user password authentication", K(login_info), KR(ret));
             } else if (pwd_match) {
-              // do nothing
+              LOG_INFO("login via OLD password (dual password fallback)",
+                       "tenant_name", login_info.tenant_name_,
+                       "user_name", login_info.user_name_,
+                       "client_ip", login_info.client_ip_,
+                       "old_password_start_time", user_info->get_old_password_start_time());
             }
           }
         }
