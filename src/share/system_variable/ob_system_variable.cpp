@@ -59,7 +59,7 @@ ObSpecialSysVarValues::ObSpecialSysVarValues()
 #ifdef OB_BUILD_CLOSE_MODULES
                                      "OceanBase %s (r%s) (Built %s %s)",
 #else
-                                     "OceanBase_CE_CL %s (r%s) (Built %s %s)",
+                                     "OceanBase_CE_CL2 %s (r%s) (Built %s %s)",
 
 #endif
                                      PACKAGE_VERSION, build_version(),
@@ -75,7 +75,7 @@ ObSpecialSysVarValues::ObSpecialSysVarValues()
 #ifdef OB_BUILD_CLOSE_MODULES
                                      pos, "5.7.25-OceanBase-v%s", PACKAGE_VERSION))) {
 #else
-                                     pos, "5.7.25-OceanBase_CE_CL-v%s", PACKAGE_VERSION))) {
+                                     pos, "5.7.25-OceanBase_CE_CL2-v%s", PACKAGE_VERSION))) {
 
 #endif
     LOG_ERROR("fail to print version to buff", K(ret));
